@@ -1,0 +1,75 @@
+/*
+   Управління стрічкою на WS2812 з комп’ютера + динамічна яскравість
+   
+*/
+//----------------------НАСТРОЙКИ-----------------------
+#define NUM_LEDS 98          
+#define DI_PIN 13            
+
+#define start_flashes 0      
+
+#define auto_bright 1        
+#define max_bright 255       
+#define min_bright 50        
+#define bright_constant 500  
+
+#define coef 0.9             
+//----------------------НАСТРОЙКИ-----------------------
+
+int new_bright, new_bright_f;
+unsigned long bright_timer;
+
+#define serialRate 115200  
+uint8_t prefix[] = {'A', 'd', 'a'}, hi, lo, chk, i;  
+#include <FastLED.h>
+CRGB leds[NUM_LEDS];  
+
+void setup()
+{
+  FastLED.addLeds<WS2812, DI_PIN, GRB>(leds, NUM_LEDS);  
+
+  
+  if (start_flashes) {
+    LEDS.showColor(CRGB(255, 0, 0));
+    delay(500);
+    LEDS.showColor(CRGB(0, 255, 0));
+    delay(500);
+    LEDS.showColor(CRGB(0, 0, 255));
+    delay(500);
+    LEDS.showColor(CRGB(0, 0, 0));
+  }
+
+  Serial.begin(serialRate);
+  Serial.print("Ada\n");     
+}
+
+void loop() {
+  if (auto_bright) {                         
+    if (millis() - bright_timer > 100) {     
+      bright_timer = millis();               
+      new_bright = map(analogRead(6), 0, bright_constant, min_bright, max_bright);   
+      new_bright = constrain(new_bright, min_bright, max_bright);
+      new_bright_f = new_bright_f * coef + new_bright * (1 - coef);
+      LEDS.setBrightness(new_bright_f);      
+    }
+  }
+
+  for (i = 0; i < sizeof prefix; ++i) {
+waitLoop: while (!Serial.available()) ;;
+    if (prefix[i] == Serial.read()) continue;
+    i = 0;
+    goto waitLoop;
+  }
+
+  while (!Serial.available()) ;;
+  hi = Serial.read();
+  while (!Serial.available()) ;;
+  lo = Serial.read();
+  while (!Serial.available()) ;;
+  chk = Serial.read();
+  if (chk != (hi ^ lo ^ 0x55))
+  {
+    i = 0;
+    goto waitLoop;
+  }
+}
