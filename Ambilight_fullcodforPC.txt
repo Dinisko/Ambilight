@@ -1,0 +1,91 @@
+/*
+   Управління стрічкою на WS2812 з комп’ютера + динамічна яскравість
+   
+*/
+//----------------------НАСТРОЙКИ-----------------------
+#define NUM_LEDS 98          // число світлодіодів на стрічці
+#define DI_PIN 13            // пін, до якого підключена стрічка
+
+#define start_flashes 0      // перевірка кольорів при запуску (1 - включити, 0 - виключити)
+
+#define auto_bright 1        // автоматичне налаштування яскравості від рівня зовнішнього освітлення (1 - включити, 0 - виключити)
+#define max_bright 255       // максимальна яскравість (0 - 255)
+#define min_bright 50        // мінімальна яскравість (0 - 255)
+#define bright_constant 500  // константа посилення від зовнішнього світла (0 - 1023)
+// чим МЕНША константа, тим "різкіше" буде прибавлятися яскравість
+#define coef 0.9             // коефіцієнт фільтра (0.0 - 1.0), чим більше - тим помаліше міняється яскравість
+//----------------------НАСТРОЙКИ-----------------------
+
+int new_bright, new_bright_f;
+unsigned long bright_timer;
+
+#define serialRate 115200  // скравість зв'язку з ПК
+uint8_t prefix[] = {'A', 'd', 'a'}, hi, lo, chk, i;  // кодове слово Ada для зв'язку
+#include <FastLED.h>
+CRGB leds[NUM_LEDS];  // створюємо стрічку
+
+void setup()
+{
+  FastLED.addLeds<WS2812, DI_PIN, GRB>(leds, NUM_LEDS);  // ініціалізація світлодіодів
+
+  // спалах червоним , синім і зеленим під час запуску(можна відключити)
+  if (start_flashes) {
+    LEDS.showColor(CRGB(255, 0, 0));
+    delay(500);
+    LEDS.showColor(CRGB(0, 255, 0));
+    delay(500);
+    LEDS.showColor(CRGB(0, 0, 255));
+    delay(500);
+    LEDS.showColor(CRGB(0, 0, 0));
+  }
+
+  Serial.begin(serialRate);
+  Serial.print("Ada\n");     // Зв'язатися з ПК
+}
+
+void loop() {
+  if (auto_bright) {                         // якщо включена адаптивна яскравість
+    if (millis() - bright_timer > 100) {     // кожні 100 мс
+      bright_timer = millis();               // скинути таймер
+      new_bright = map(analogRead(6), 0, bright_constant, min_bright, max_bright);   // зчитати показники з фоторезистора, перевести діапазон
+      new_bright = constrain(new_bright, min_bright, max_bright);
+      new_bright_f = new_bright_f * coef + new_bright * (1 - coef);
+      LEDS.setBrightness(new_bright_f);      // встановити нову яскравість
+    }
+  }
+
+  for (i = 0; i < sizeof prefix; ++i) {
+waitLoop: while (!Serial.available()) ;;
+    if (prefix[i] == Serial.read()) continue;
+    i = 0;
+    goto waitLoop;
+  }
+
+  while (!Serial.available()) ;;
+  hi = Serial.read();
+  while (!Serial.available()) ;;
+  lo = Serial.read();
+  while (!Serial.available()) ;;
+  chk = Serial.read();
+  if (chk != (hi ^ lo ^ 0x55))
+  {
+    i = 0;
+    goto waitLoop;
+  }
+
+  memset(leds, 0, NUM_LEDS * sizeof(struct CRGB));
+  for (uint8_t i = 0; i < NUM_LEDS; i++) {
+    byte r, g, b;
+    // читаємо дані для кожного кольору
+    while (!Serial.available());
+    r = Serial.read();
+    while (!Serial.available());
+    g = Serial.read();
+    while (!Serial.available());
+    b = Serial.read();
+    leds[i].r = r;
+    leds[i].g = g;
+    leds[i].b = b;
+  }
+  FastLED.show();  // записуємо кольори у стрічку
+}
